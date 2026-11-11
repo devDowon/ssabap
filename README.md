@@ -14,6 +14,8 @@ GitHub Actions에서 돌아가므로 서버가 필요 없습니다. 외부 패�
 ## 빠른 설정 (약 10분)
 
 1. 이 레포를 본인 계정에 복사합니다 (private 권장).
+   - 추천: **Use this template → Create a new repository**. 원본과 연결이 끊긴 독립 레포가 됩니다.
+   - 포크도 되지만, private 레포의 포크는 원본이 지워지거나 접근 권한이 빠지면 같이 사라집니다.
 2. Mattermost에서 보낼 채널의 **웹훅 URL**을 만듭니다 → [웹훅 만들기](#mattermost-웹훅-만들기)
 3. 레포 **Settings → Secrets and variables → Actions → New repository secret**에 아래 값을 넣습니다.
    - `WELSTORY_USERNAME`, `WELSTORY_PASSWORD`, `MM_WEBHOOK_URL` (필수)
@@ -31,6 +33,18 @@ GitHub Actions에서 돌아가므로 서버가 필요 없습니다. 외부 패�
 gh secret set -f .env
 gh workflow run lunch.yml -f dry_run=true
 ```
+
+### 처음 켜는 날
+
+- **11:30 전에 켜면 그날부터 돕니다.** 예: 오전 10시에 켜면 그날 11:30 정기 실행부터 올라갑니다.
+- **켜기 전에 Secrets 3개를 먼저 넣습니다.** `gh secret list`로 `WELSTORY_USERNAME`, `WELSTORY_PASSWORD`, `MM_WEBHOOK_URL`이 있는지 확인하세요. 없으면 11:30 실행이 실패합니다.
+- **켠 직후 `dry_run`으로 한 번 돌려봅니다.** `dry_run`은 전송 기록을 남기지 않으므로 그날 11:30 실제 전송에 영향이 없습니다.
+- **첫날은 11:45쯤 Actions 탭을 확인합니다.** 막 만든 레포는 첫 정기 실행이 늦거나 빠지는 경우가 있습니다. 안 돌았으면 수동으로 바로 보냅니다.
+  ```sh
+  gh workflow run lunch.yml -f no_wait=true
+  ```
+  수동으로 보낸 뒤에 정기 실행이 늦게 돌아도, 하루 1회 기록 때문에 중복으로 올라가지 않습니다.
+- **11:30 이후에 켰다면** 그날 정기 실행은 이미 지나갔으니 위 수동 실행으로 보냅니다.
 
 ## Mattermost 웹훅 만들기
 
@@ -74,6 +88,7 @@ GitHub Actions에서는 Secrets로, 로컬에서는 `.env` 파일로 넣습니�
 - **cron은 늦게 시작될 수 있습니다.** GitHub Actions 정기 실행은 수 분~수십 분 늦는 경우가 흔하고, 혼잡하면 건너뛰기도 합니다. 꼭 올라가야 하는 날은 Actions 탭에서 확인하고, 안 돌았으면 수동 실행하세요.
 - **Actions 사용 시간:** 사진을 기다리는 동안에도 실행 시간이 쌓입니다. 정기 실행은 11:30 시작이라 대기가 최대 약 10분이고, 하루 약 10분 × 평일 22일 ≈ 월 220분입니다.
   private 레포 무료 한도(월 2,000분, GitHub Free 기준)를 다른 작업과 나눠 쓰니 확인하세요. public 레포는 무료입니다.
+- **public 레포는 60일 동안 커밋이 없으면 정기 실행이 자동으로 꺼집니다.** GitHub에서 메일이 오면 Actions 탭에서 다시 켜세요. private 레포는 해당 없습니다.
 - **왜 Python이 아니라 Node인가:** 웰스토리 로그인 경로 앞단의 방화벽(Imperva Incapsula)이 Python `requests` 요청을 403으로 막습니다. 같은 요청을 Node 내장 `fetch`와 curl로 보내면 통과합니다.
 
 ## 로컬 실행
