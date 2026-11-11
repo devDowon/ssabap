@@ -37,7 +37,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
 
       - name: 오늘 날짜 (KST)
         run: echo "DAY=$(TZ=Asia/Seoul date +%Y%m%d)" >> "$GITHUB_ENV"
