@@ -231,30 +231,65 @@ function photoUrl(m) {
 
 const text = (v) => (v == null ? '' : String(v).trim());
 
-function buildPayload(day, meals) {
-  const attachments = meals.map((m) => {
-    const title = [text(m.courseTxt), text(m.menuName)].filter(Boolean).join(' · ') || '메뉴';
-    // 실제 응답: kcal = 메인 메뉴만, sumKcal = 코스 전체 ("1,020" 같은 문자열). 코스 전체 우선, 0은 정보 없음 취급
-    const kcal = [text(m.sumKcal), text(m.kcal)].find((v) => v && v !== '0') ?? '';
-    const att = {
-      fallback: title,
-      color: '#2E7D32',
-      title,
-      text: text(m.subMenuTxt) || '(세부 메뉴 정보 없음)',
-    };
-    // "[라면 14종 중 택1]" 같은 선택형 코스는 sumKcal이 전 품목 합계라 의미 없음 → 칼로리 표시 안 함
-    if (!/택\s*1/.test(text(m.menuName))) {
-      att.fields = [{ short: true, title: '칼로리', value: kcal ? `${kcal} kcal` : '정보 없음' }];
-    }
-    const url = photoUrl(m);
-    if (url) att.image_url = url;
-    return att;
-  });
+/** 마크다운 표 셀용: 파이프/줄바꿈 이스케이프 */
+const cell = (s) => s.replace(/\|/g, '\\|').replace(/\r?\n/g, ' ');
 
-  let header = `#### 🍚 ${day.month}월 ${day.day}일 (${WEEKDAYS[day.weekday]}) 점심`;
+/** 쉼표로 나누되 괄호 안 쉼표는 무시. "요거트&토핑2종(그래놀라,아몬드),사과주스" → 2개 */
+function splitMenu(s) {
+  const out = [];
+  let depth = 0;
+  let cur = '';
+  for (const ch of s) {
+    if (ch === '(') depth++;
+    if (ch === ')') depth = Math.max(0, depth - 1);
+    if (ch === ',' && depth === 0) {
+      out.push(cur);
+      cur = '';
+    } else {
+      cur += ch;
+    }
+  }
+  out.push(cur);
+  return out.map((x) => x.trim()).filter(Boolean);
+}
+
+/** subMenuTxt에서 메인 메뉴를 뺀 반찬 목록. 메인 이름에도 쉼표가 있을 수 있어 접두어로 제거 */
+function sideDishes(m) {
+  const main = text(m.menuName);
+  let sub = text(m.subMenuTxt);
+  if (main && sub.startsWith(main)) sub = sub.slice(main.length).replace(/^\s*,/, '');
+  return splitMenu(sub);
+}
+
+/** 코스 전체 칼로리. kcal = 메인만, sumKcal = 코스 전체("1,020"). 0은 정보 없음.
+ *  "[라면 14종 중 택1]" 같은 선택형 코스는 sumKcal이 전 품목 합계라 의미 없음 → 표시 안 함 */
+function courseKcal(m) {
+  if (/택\s*1/.test(text(m.menuName))) return '';
+  return [text(m.sumKcal), text(m.kcal)].find((v) => v && v !== '0') ?? '';
+}
+
+function buildPayload(day, meals) {
+  const photos = meals.map((m) => (photoUrl(m) ? `![](${photoUrl(m)})` : ' '));
+  const courses = meals.map((m) => `**${cell(text(m.courseTxt) || '메뉴')}**`);
+  const mains = meals.map((m) => {
+    const kcal = courseKcal(m);
+    return cell(text(m.menuName) + (kcal ? ` (${kcal}kcal)` : ''));
+  });
+  const sides = meals.map((m) => cell(sideDishes(m).join(' / ')) || ' ');
+
+  const row = (cells) => `| ${cells.join(' | ')} |`;
+  const lines = [
+    `## :shark_food: ${day.year}-${pad(day.month)}-${pad(day.day)} 점심 메뉴 :food-fried-egg: `,
+    '',
+    row(photos),
+    row(meals.map(() => '---')),
+    row(courses),
+    row(mains),
+    row(sides),
+  ];
   const noPhoto = meals.filter((m) => !photoUrl(m)).length;
-  if (noPhoto) header += `\n_사진 없는 코스 ${noPhoto}개_`;
-  return { text: header, attachments };
+  if (noPhoto) lines.push('', `_사진 없는 코스 ${noPhoto}개_`);
+  return { text: lines.join('\n') };
 }
 
 async function sendToMattermost(webhookUrl, payload) {
