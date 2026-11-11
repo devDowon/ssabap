@@ -18,8 +18,12 @@ GitHub Actions에서 돌아가므로 서버가 필요 없습니다. 외부 패�
 3. 레포 **Settings → Secrets and variables → Actions → New repository secret**에 아래 값을 넣습니다.
    - `WELSTORY_USERNAME`, `WELSTORY_PASSWORD`, `MM_WEBHOOK_URL` (필수)
    - 나머지는 [설정값](#설정값) 참고
-4. **Actions → Lunch menu → Run workflow**에서 `dry_run` 체크 후 실행 → 로그에 메뉴 표가 나오면 성공
-5. 이제 평일 11:30(KST)마다 자동으로 올라갑니다.
+4. **Actions** 탭에서 워크플로를 켭니다. 복사한 레포는 Actions가 꺼져 있을 수 있습니다.
+   - "I understand my workflows, go ahead and enable them" 버튼이 보이면 누릅니다.
+   - **Lunch menu**가 Disabled면 **Enable workflow**를 누릅니다.
+   - `gh` CLI: `gh workflow enable lunch.yml`
+5. **Actions → Lunch menu → Run workflow**에서 `dry_run` 체크 후 실행 → 로그에 메뉴 표가 나오면 성공
+6. 이제 평일 11:30(KST)마다 자동으로 올라갑니다.
 
 `gh` CLI를 쓴다면 3번은 `.env` 파일로 한 번에 넣을 수 있습니다. 값이 빈 줄은 지우고 실행하세요.
 
