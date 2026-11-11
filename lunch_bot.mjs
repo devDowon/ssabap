@@ -7,6 +7,7 @@
  *   WELSTORY_USERNAME, WELSTORY_PASSWORD  (필수)
  *   MM_WEBHOOK_URL                        (실제 전송 시 필수, --dry-run이면 불필요)
  *   RESTAURANT_CODE, RESTAURANT_NAME      (선택)
+ *   HALL_NO                               (선택, 기본 E32M = 점심 코스 홀)
  */
 import { randomUUID } from 'node:crypto';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
@@ -21,6 +22,7 @@ const RETRIES = 3;                     // 네트워크 오류/5xx 재시도 횟�
 const POLL_INTERVAL_MS = 5 * 60_000;   // 사진 대기 중 재조회 간격
 const DEADLINE_HM = [11, 40];          // 이 시각(KST)까지 사진 없으면 있는 것만으로 전송
 const WEEKDAYS = '일월화수목금토';
+const DEFAULT_HALL_NO = 'E32M';        // 점심 코스 홀 (전기부산 기준). 환경변수 HALL_NO로 변경, 쉼표로 여러 개
 
 class BotError extends Error {}
 /** 빈 본문 / JSON 아님 / 구조 다름 → 인증 실패 또는 API 변경 */
@@ -319,6 +321,7 @@ async function run(args) {
   // 마감 시각(KST)의 실제 epoch ms
   const deadline = Date.UTC(day.year, day.month - 1, day.day, ...DEADLINE_HM) - KST_OFFSET_MS;
   const wait = !(args['dry-run'] || args['no-wait']);
+  const halls = (env('HALL_NO', false) ?? DEFAULT_HALL_NO).split(',').map((s) => s.trim()).filter(Boolean);
   let meals;
   for (;;) {
     try {
@@ -333,6 +336,13 @@ async function run(args) {
     if (meals.length === 0) {
       log('식단 없음 (주말/휴일) → 전송 없이 종료');
       return 0;
+    }
+    // 점심 코스 홀만 (테이크아웃/코인 메뉴 제외). 필터 후 0개면 홀 코드가 바뀐 것 → 조용히 넘어가지 않고 실패
+    const all = meals;
+    meals = all.filter((m) => halls.includes(String(m.hallNo)));
+    if (meals.length === 0) {
+      const found = [...new Set(all.map((m) => m.hallNo))];
+      throw new BotError(`HALL_NO=${halls.join(',')} 에 해당하는 코스 없음. 응답에 있는 홀: ${JSON.stringify(found)}`);
     }
     const missing = meals.filter((m) => !photoUrl(m)).length;
     log(`코스 ${meals.length}개, 사진 없는 코스 ${missing}개`);
