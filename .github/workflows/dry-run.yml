@@ -15,10 +15,9 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-node@v4
         with:
-          python-version: '3.11'
-      - run: pip install -r requirements.txt
+          node-version: '20'
       - name: Run bot (dry-run)
         env:
           WELSTORY_USERNAME: ${{ secrets.WELSTORY_USERNAME }}
@@ -28,7 +27,7 @@ jobs:
           INPUT_DATE: ${{ inputs.date }}
         run: |
           if [ -n "$INPUT_DATE" ]; then
-            python lunch_bot.py --dry-run --debug --date "$INPUT_DATE"
+            node lunch_bot.mjs --dry-run --debug --date "$INPUT_DATE"
           else
-            python lunch_bot.py --dry-run --debug
+            node lunch_bot.mjs --dry-run --debug
           fi

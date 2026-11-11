@@ -1,0 +1,10 @@
+{
+  "name": "ssabap",
+  "private": true,
+  "type": "module",
+  "description": "SSAFY 점심 식단 Mattermost 봇 (웰스토리 API 직접 호출, 외부 패키지 없음)",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "dry-run": "node lunch_bot.mjs --dry-run --debug"
+  }
+}
