@@ -1,0 +1,77 @@
+name: Lunch menu
+
+on:
+  schedule:
+    # 평일 10:50 KST = 01:50 UTC. Actions cron은 수 분~수십 분 늦게 시작될 수 있음
+    - cron: '50 1 * * 1-5'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: '전송하지 않고 payload만 로그에 출력'
+        type: boolean
+        default: false
+      no_wait:
+        description: '사진을 기다리지 않고 바로 전송'
+        type: boolean
+        default: false
+      force:
+        description: '오늘 이미 보낸 웹훅에도 다시 전송 (중복 게시됨)'
+        type: boolean
+        default: false
+      date:
+        description: '조회 날짜 YYYYMMDD (비우면 오늘 KST)'
+        required: false
+        default: ''
+
+# 정기 실행과 수동 실행이 겹쳐도 한 번에 하나만 (중복 게시 방지)
+concurrency:
+  group: lunch-menu
+  cancel-in-progress: false
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: 오늘 날짜 (KST)
+        run: echo "DAY=$(TZ=Asia/Seoul date +%Y%m%d)" >> "$GITHUB_ENV"
+
+      - name: 오늘 전송 기록 복원
+        if: ${{ !inputs.force }}
+        uses: actions/cache/restore@v4
+        with:
+          path: .sent-marker
+          key: sent-${{ env.DAY }}-${{ github.run_id }}
+          restore-keys: sent-${{ env.DAY }}-
+
+      - name: 식단 조회 및 전송
+        env:
+          WELSTORY_USERNAME: ${{ secrets.WELSTORY_USERNAME }}
+          WELSTORY_PASSWORD: ${{ secrets.WELSTORY_PASSWORD }}
+          MM_WEBHOOK_URL: ${{ secrets.MM_WEBHOOK_URL }}
+          RESTAURANT_CODE: ${{ secrets.RESTAURANT_CODE }}
+          RESTAURANT_NAME: ${{ secrets.RESTAURANT_NAME }}
+          HALL_NO: ${{ secrets.HALL_NO }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          NO_WAIT: ${{ inputs.no_wait }}
+          INPUT_DATE: ${{ inputs.date }}
+        run: |
+          args=(--sent-marker .sent-marker)
+          if [ "$DRY_RUN" = "true" ]; then args+=(--dry-run --debug); fi
+          if [ "$NO_WAIT" = "true" ]; then args+=(--no-wait); fi
+          if [ -n "$INPUT_DATE" ]; then args+=(--date "$INPUT_DATE"); fi
+          node lunch_bot.mjs "${args[@]}"
+
+      # 일부 웹훅만 성공한 경우에도 기록을 남겨야 재실행 시 그 웹훅을 건너뜀
+      - name: 오늘 전송 기록 저장
+        if: ${{ always() && hashFiles('.sent-marker') != '' }}
+        uses: actions/cache/save@v4
+        with:
+          path: .sent-marker
+          key: sent-${{ env.DAY }}-${{ github.run_id }}-${{ github.run_attempt }}

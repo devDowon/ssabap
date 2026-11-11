@@ -5,11 +5,11 @@
  *
  * 환경변수 (.env 파일도 읽음, 이미 설정된 값은 덮어쓰지 않음):
  *   WELSTORY_USERNAME, WELSTORY_PASSWORD  (필수)
- *   MM_WEBHOOK_URL                        (실제 전송 시 필수, --dry-run이면 불필요)
+ *   MM_WEBHOOK_URL                        (실제 전송 시 필수, 쉼표로 여러 개. --dry-run이면 불필요)
  *   RESTAURANT_CODE, RESTAURANT_NAME      (선택)
  *   HALL_NO                               (선택, 기본 E32M = 점심 코스 홀)
  */
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -295,14 +295,43 @@ function buildPayload(day, meals) {
   return { text: lines.join('\n') };
 }
 
-async function sendToMattermost(webhookUrl, payload) {
+/** MM_WEBHOOK_URL: 쉼표/공백/줄바꿈으로 구분한 여러 URL. 중복 제거 */
+function parseWebhooks(raw) {
+  const urls = [...new Set(raw.split(/[\s,]+/).filter(Boolean))];
+  const bad = urls.filter((u) => !/^https?:\/\/[^/]+\/hooks\/[A-Za-z0-9]+$/.test(u));
+  if (bad.length) {
+    // URL 전체는 비밀이므로 앞부분만 표시
+    throw new BotError(`MM_WEBHOOK_URL 형식 오류 (https://<서버>/hooks/<id> 여야 함): ${bad.map((u) => `${u.slice(0, 30)}…`).join(', ')}`);
+  }
+  return urls;
+}
+
+/** 로그/마커용 웹훅 식별자. URL 자체가 비밀이라 해시 앞 8자리만 사용 */
+const webhookId = (url) => createHash('sha256').update(url).digest('hex').slice(0, 8);
+
+/** 마커 파일: {"date":"YYYYMMDD","sent":["<webhookId>",...]}. 날짜가 다르면 빈 집합 */
+function readMarker(path, dayKey) {
+  if (!existsSync(path)) return new Set();
+  try {
+    const m = JSON.parse(readFileSync(path, 'utf8'));
+    return m.date === dayKey ? new Set(m.sent ?? []) : new Set();
+  } catch {
+    return new Set(); // 예전 형식(날짜만) 또는 손상 → 무시
+  }
+}
+
+function writeMarker(path, dayKey, sent) {
+  writeFileSync(path, JSON.stringify({ date: dayKey, sent: [...sent] }), 'utf8');
+}
+
+async function sendToMattermost(webhookUrl, payload, label) {
   const { res, text: body } = await fetchWithRetry(webhookUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json; charset=utf-8' },
     body: JSON.stringify(payload),
-  }, { label: 'Mattermost 웹훅', retryTimeout: false });
-  if (res.status !== 200) throw new BotError(`Mattermost 전송 실패: HTTP ${res.status} - ${body.slice(0, 200)}`);
-  log('Mattermost 전송 완료');
+  }, { label, retryTimeout: false });
+  if (res.status !== 200) throw new BotError(`HTTP ${res.status} - ${body.slice(0, 200)}`);
+  log(`${label} 전송 완료`);
 }
 
 // ---------------- 메인 ----------------
@@ -343,14 +372,19 @@ function resolveDay(arg) {
 async function run(args) {
   const username = env('WELSTORY_USERNAME');
   const password = env('WELSTORY_PASSWORD');
-  const webhook = args['dry-run'] ? null : env('MM_WEBHOOK_URL');
+  const webhooks = args['dry-run'] ? [] : parseWebhooks(env('MM_WEBHOOK_URL'));
   const day = resolveDay(args.date);
   const marker = args['sent-marker'];
 
-  // 하루 한 번만 전송: 마커 파일에 날짜가 있으면 건너뜀
-  if (!args['dry-run'] && marker && existsSync(marker) && readFileSync(marker, 'utf8').trim() === day.key) {
-    log(`${day.key} 이미 전송됨 (마커 ${marker}) → 종료`);
-    return 0;
+  // 하루 한 번만 전송: 마커에 오늘 이미 보낸 웹훅이 기록돼 있으면 그 웹훅은 건너뜀
+  const sent = marker ? readMarker(marker, day.key) : new Set();
+  const pending = webhooks.filter((u) => !sent.has(webhookId(u)));
+  if (!args['dry-run']) {
+    log(`웹훅 ${webhooks.length}개 (오늘 이미 전송 ${webhooks.length - pending.length}개)`);
+    if (pending.length === 0) {
+      log(`${day.key} 모든 웹훅에 이미 전송됨 → 종료`);
+      return 0;
+    }
   }
 
   const client = new WelstoryClient(username, password, args.debug);
@@ -399,8 +433,22 @@ async function run(args) {
     console.log(JSON.stringify(payload, null, 2));
     return 0;
   }
-  await sendToMattermost(webhook, payload);
-  if (marker) writeFileSync(marker, day.key, 'utf8');
+
+  // 웹훅마다 전송. 성공한 것은 즉시 마커에 기록 → 재실행 시 실패한 웹훅에만 다시 보냄
+  let failed = 0;
+  for (const [i, url] of pending.entries()) {
+    const label = `웹훅 ${webhookId(url)}`;
+    try {
+      await sendToMattermost(url, payload, label);
+      sent.add(webhookId(url));
+      if (marker) writeMarker(marker, day.key, sent);
+    } catch (e) {
+      if (!(e instanceof BotError)) throw e;
+      failed++;
+      log(`${label} (${i + 1}/${pending.length}) 실패: ${e.message}`);
+    }
+  }
+  if (failed) throw new BotError(`웹훅 ${webhooks.length}개 중 ${failed}개 전송 실패 (성공한 곳은 재실행 시 건너뜀)`);
   return 0;
 }
 
