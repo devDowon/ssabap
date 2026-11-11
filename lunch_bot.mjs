@@ -258,7 +258,10 @@ function sideDishes(m) {
   const main = text(m.menuName);
   let sub = text(m.subMenuTxt);
   if (main && sub.startsWith(main)) sub = sub.slice(main.length).replace(/^\s*,/, '');
-  return splitMenu(sub);
+  const items = splitMenu(sub);
+  // 라면 코스: 라면 종류 나열은 빼고 "[토핑8종]" 뒤 항목만
+  const topping = items.findIndex((x) => /^\[토핑/.test(x));
+  return topping >= 0 ? items.slice(topping + 1) : items;
 }
 
 /** 코스 전체 칼로리. kcal = 메인만, sumKcal = 코스 전체("1,020"). 0은 정보 없음.
