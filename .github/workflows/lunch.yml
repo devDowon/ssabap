@@ -2,8 +2,8 @@ name: Lunch menu
 
 on:
   schedule:
-    # 평일 10:50 KST = 01:50 UTC. Actions cron은 수 분~수십 분 늦게 시작될 수 있음
-    - cron: '50 1 * * 1-5'
+    # 평일 11:30 KST = 02:30 UTC. Actions cron은 수 분~수십 분 늦게 시작될 수 있음
+    - cron: '30 2 * * 1-5'
   workflow_dispatch:
     inputs:
       dry_run:
