@@ -241,8 +241,11 @@ function buildPayload(day, meals) {
       color: '#2E7D32',
       title,
       text: text(m.subMenuTxt) || '(세부 메뉴 정보 없음)',
-      fields: [{ short: true, title: '칼로리', value: kcal ? `${kcal} kcal` : '정보 없음' }],
     };
+    // "[라면 14종 중 택1]" 같은 선택형 코스는 sumKcal이 전 품목 합계라 의미 없음 → 칼로리 표시 안 함
+    if (!/택\s*1/.test(text(m.menuName))) {
+      att.fields = [{ short: true, title: '칼로리', value: kcal ? `${kcal} kcal` : '정보 없음' }];
+    }
     const url = photoUrl(m);
     if (url) att.image_url = url;
     return att;
