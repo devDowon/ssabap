@@ -1,0 +1,34 @@
+name: Dry run (manual)
+
+# 수동 실행 전용: 로그인/식당/중식 code/식단 확인. Mattermost로 보내지 않음.
+on:
+  workflow_dispatch:
+    inputs:
+      date:
+        description: '조회 날짜 YYYYMMDD (비우면 오늘 KST)'
+        required: false
+        default: ''
+
+jobs:
+  dry-run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install -r requirements.txt
+      - name: Run bot (dry-run)
+        env:
+          WELSTORY_USERNAME: ${{ secrets.WELSTORY_USERNAME }}
+          WELSTORY_PASSWORD: ${{ secrets.WELSTORY_PASSWORD }}
+          RESTAURANT_CODE: ${{ secrets.RESTAURANT_CODE }}
+          RESTAURANT_NAME: ${{ secrets.RESTAURANT_NAME }}
+          INPUT_DATE: ${{ inputs.date }}
+        run: |
+          if [ -n "$INPUT_DATE" ]; then
+            python lunch_bot.py --dry-run --debug --date "$INPUT_DATE"
+          else
+            python lunch_bot.py --dry-run --debug
+          fi
